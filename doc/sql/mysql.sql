@@ -25,7 +25,7 @@ CREATE TABLE `clients` (
 
 CREATE TABLE `input` (
   `id` int(11) NOT NULL auto_increment,
-  `session` char(32) NOT NULL,
+  `session` char(32) NOT NULL REFERENCES sessions(id),
   `timestamp` datetime NOT NULL,
   `realm` varchar(50) default NULL,
   `success` tinyint(1) default NULL,
@@ -57,14 +57,14 @@ CREATE TABLE `sessions` (
 
 CREATE TABLE `ttylog` (
   `id` int(11) NOT NULL auto_increment,
-  `session` char(32) NOT NULL,
+  `session` char(32) NOT NULL REFERENCES sessions(id),
   `ttylog` mediumblob NOT NULL,
   PRIMARY KEY  (`id`)
 ) ;
 
 CREATE TABLE `downloads` (
   `id` int(11) NOT NULL auto_increment,
-  `session` CHAR( 32 ) NOT NULL,
+  `session` CHAR( 32 ) NOT NULL REFERENCES sessions(id),
   `timestamp` datetime NOT NULL,
   `url` text NOT NULL,
   `outfile` text NOT NULL,
