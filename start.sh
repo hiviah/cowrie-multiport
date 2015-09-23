@@ -24,5 +24,8 @@ then
     . $VENV/bin/activate
 fi
 
+#In case we need lots of open ports
+ulimit -S -n 32768
+
 echo "Starting cowrie in the background..."
 twistd -l log/cowrie.log --pidfile cowrie.pid cowrie
