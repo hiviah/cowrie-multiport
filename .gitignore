@@ -16,3 +16,4 @@ __pycache__/
 env/
 env1/
 env2/
+.*.swp
