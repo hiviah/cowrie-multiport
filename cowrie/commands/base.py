@@ -233,9 +233,10 @@ class command_passwd(HoneyPotCommand):
             self.exit()
             return
 
-        userdb = UserDB(self.honeypot.env.cfg)
-        userdb.adduser(self.honeypot.user.username,
-            self.honeypot.user.uid, self.passwd)
+        # Don't really add passwords
+        #userdb = UserDB(self.honeypot.env.cfg)
+        #userdb.adduser(self.honeypot.user.username,
+        #    self.honeypot.user.uid, self.passwd)
 
         self.writeln('passwd: password updated successfully')
         self.exit()
