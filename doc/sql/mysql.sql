@@ -11,7 +11,7 @@ CREATE TABLE `auth` (
   `session` char(32) NOT NULL,
   `success` tinyint(1) NOT NULL,
   `username` varchar(100) NOT NULL,
-  `password` varchar(100) NOT NULL,
+  `password` varchar(256) NOT NULL,
   `timestamp` datetime NOT NULL,
   PRIMARY KEY  (`id`),
   KEY `session` (`session`)
