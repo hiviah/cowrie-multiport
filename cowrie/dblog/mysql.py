@@ -1,4 +1,5 @@
 from cowrie.core import dblog
+from cowrie.core.ttylog import ttylog_disabled
 from twisted.enterprise import adbapi
 from twisted.internet import defer
 from twisted.python import log
@@ -78,6 +79,9 @@ class DBLogger(dblog.DBLogger):
             (sid, self.nowUnix(), id, peerIP, peerPort))
 
     def handleConnectionLost(self, session, args):
+        if ttylog_disabled:
+            return
+
         ttylog = self.ttylog(session)
         if ttylog:
             self.simpleQuery(

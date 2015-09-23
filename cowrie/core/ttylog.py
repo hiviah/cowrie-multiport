@@ -8,7 +8,12 @@ import struct
 OP_OPEN, OP_CLOSE, OP_WRITE, OP_EXEC = 1, 2, 3, 4
 TYPE_INPUT, TYPE_OUTPUT, TYPE_INTERACT = 1, 2, 3
 
+ttylog_disabled = True
+
 def ttylog_write(logfile, len, direction, stamp, data=None):
+    if ttylog_disabled:
+        return
+
     f = file(logfile, 'ab')
     sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
     f.write(struct.pack('<iLiiLL', 3, 0, len, direction, sec, usec))
@@ -16,12 +21,18 @@ def ttylog_write(logfile, len, direction, stamp, data=None):
     f.close()
 
 def ttylog_open(logfile, stamp):
+    if ttylog_disabled:
+        return
+
     f = file(logfile, 'ab')
     sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
     f.write(struct.pack('<iLiiLL', 1, 0, 0, 0, sec, usec))
     f.close()
 
 def ttylog_close(logfile, stamp):
+    if ttylog_disabled:
+        return
+
     f = file(logfile, 'ab')
     sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
     f.write(struct.pack('<iLiiLL', 2, 0, 0, 0, sec, usec))
