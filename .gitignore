@@ -17,3 +17,4 @@ env/
 env1/
 env2/
 .*.swp
+cron-start.log
