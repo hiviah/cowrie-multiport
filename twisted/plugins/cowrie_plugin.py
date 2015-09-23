@@ -43,11 +43,17 @@ class CowrieServiceMaker(object):
 
         # preference: 1, option, 2, config, 3, default of 2222
         if options['port'] != 0:
-            listen_port = int(options["port"])
-        elif cfg.has_option('honeypot', 'listen_port'):
-            listen_port = int(cfg.get('honeypot', 'listen_port'))
+            listen_ports = options["port"]
+        elif cfg.has_option('honeypot', 'listen_ports'):
+            listen_ports = cfg.get('honeypot', 'listen_ports')
         else:
-            listen_port = 2222
+            listen_ports = "2222"
+
+        listen_ports_range = [int(port) for port in listen_ports.split(" ")]
+        if len(listen_ports_range) == 1:
+            listen_ports_enum = [listen_ports_range[0]]
+        else:
+            listen_ports_enum = range(listen_ports_range[0], listen_ports_range[1]+1)
 
         factory = core.ssh.HoneyPotSSHFactory(cfg)
         factory.portal = portal.Portal(core.ssh.HoneyPotRealm(cfg))
@@ -62,8 +68,9 @@ class CowrieServiceMaker(object):
         top_service = top_service = service.MultiService()
 
         for i in listen_addr.split():
-            svc = internet.TCPServer(listen_port, factory, interface=i)
-            svc.setServiceParent(top_service)
+            for port in listen_ports_enum:
+                svc = internet.TCPServer(port, factory, interface=i)
+                svc.setServiceParent(top_service)
 
         if cfg.has_option('honeypot', 'interact_enabled') and \
                  cfg.get('honeypot', 'interact_enabled').lower() in \
