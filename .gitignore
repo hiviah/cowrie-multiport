@@ -19,3 +19,4 @@ env2/
 .*.swp
 cron-start.log
 *.kpf
+twisted/plugins/dropin.cache
