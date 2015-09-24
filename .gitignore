@@ -20,3 +20,5 @@ env2/
 cron-start.log
 *.kpf
 twisted/plugins/dropin.cache
+twistd.pid
+.idea
