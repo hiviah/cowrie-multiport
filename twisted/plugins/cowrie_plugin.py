@@ -57,7 +57,8 @@ class CowrieServiceMaker(object):
 
         factory = core.ssh.HoneyPotSSHFactory(cfg)
         factory.portal = portal.Portal(core.ssh.HoneyPotRealm(cfg))
-        factory.portal.registerChecker(core.auth.HoneypotPublicKeyChecker(cfg))
+        # Disable pubkey checking, it breaks mitmproxy on Turris
+        #factory.portal.registerChecker(core.auth.HoneypotPublicKeyChecker(cfg))
         factory.portal.registerChecker(core.auth.HoneypotPasswordChecker(cfg))
 
         if cfg.has_option('honeypot', 'auth_none_enabled') and \
