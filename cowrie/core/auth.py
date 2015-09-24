@@ -69,13 +69,34 @@ class UserDB(object):
             f.write('%s:%d:%s\n' % (login, uid, passwd))
         f.close()
 
+    @staticmethod
+    def demangle_password(password):
+        """Demangle password from jsonified in-band signaling from mitmproxy, e.g.
+        {"pass": "zaq12wsx", "remote": "82.165.199.122", "turris_id": "00000005000002ee"}
+
+        @returns tuple (password, remote, turris_id). Last two fields are None
+                if it's not valid json.
+        """
+        try:
+            d = json.loads(password)
+            return (d.get("pass", ""), d.get("remote"), d.get("turris_id"))
+        except ValueError:
+            return (password, None, None)
+        except AttributeError:
+            return (password, None, None)
+
     def checklogin(self, thelogin, thepasswd, src_ip='0.0.0.0'):
         """
         check entered username/password against database
         note that it allows multiple passwords for a single username
         it also knows wildcard '*' for any password
         prepend password with ! to explicitly deny it. Denials must come before wildcards
+
+        Hack: this will try to de-mangle password from json format that is sent
+        by mitmproxy.
         """
+        thepasswd = self.demangle_password(thepasswd)[0]
+
         for (login, uid, passwd) in self.userdb:
             # explicitly fail on !password
             if login == thelogin and passwd == '!' + thepasswd:
