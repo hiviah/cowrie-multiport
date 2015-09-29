@@ -17,7 +17,7 @@ class command_cat(HoneyPotCommand):
         else:
             for arg in self.args:
                 path = self.fs.resolve_path(arg, self.honeypot.cwd)
-                if self.fs.is_dir(path):
+                if self.fs.isdir(path):
                     self.writeln('cat: %s: Is a directory' % (arg,))
                     continue
                 try:
@@ -53,7 +53,7 @@ class command_tail(HoneyPotCommand):
 
             for arg in args:
                 path = self.fs.resolve_path(arg, self.honeypot.cwd)
-                if self.fs.is_dir(path):
+                if self.fs.isdir(path):
                     self.writeln("tail: error reading `%s': Is a directory" % (arg,))
                     continue
                 try:
@@ -98,7 +98,7 @@ class command_head(HoneyPotCommand):
 
             for arg in args:
                 path = self.fs.resolve_path(arg, self.honeypot.cwd)
-                if self.fs.is_dir(path):
+                if self.fs.isdir(path):
                     self.writeln("head: error reading `%s': Is a directory" % (arg,))
                     continue
                 try:
@@ -129,24 +129,16 @@ class command_cd(HoneyPotCommand):
             path = self.args[0]
         try:
             newpath = self.fs.resolve_path(path, self.honeypot.cwd)
-            newdir = self.fs.get_path(newpath)
+            inode = self.fs.getfile(newpath)
         except:
             newdir = None
         if path == "-":
             self.writeln('bash: cd: OLDPWD not set')
             return
-        if newdir is None:
+        if inode is None or inode is False:
             self.writeln('bash: cd: %s: No such file or directory' % path)
             return
-        count = 0
-        while self.fs.is_link(newpath):
-            f = self.fs.getfile(newpath)
-            newpath = f[A_TARGET]
-            count += 1
-            if count > 10:
-                self.writeln('bash: cd: %s: Too many levels of symbolic links' % path)
-                return
-        if not self.fs.is_dir(newpath):
+        if inode[A_TYPE] != T_DIR:
             self.writeln('bash: cd: %s: Not a directory' % path)
             return
         self.honeypot.cwd = newpath
@@ -204,7 +196,7 @@ class command_cp(HoneyPotCommand):
             self.writeln("Try `cp --help' for more information.")
             return
         sources, dest = args[:-1], args[-1]
-        if len(sources) > 1 and not self.fs.is_dir(resolv(dest)):
+        if len(sources) > 1 and not self.fs.isdir(resolv(dest)):
             self.writeln("cp: target `%s' is not a directory" % (dest,))
             return
 
@@ -215,10 +207,10 @@ class command_cp(HoneyPotCommand):
                 (dest,))
             return
 
-        if self.fs.is_dir(resolv(dest)):
-            is_dir = True
+        if self.fs.isdir(resolv(dest)):
+            isdir = True
         else:
-            is_dir = False
+            isdir = False
             parent = os.path.dirname(resolv(dest))
             if not self.fs.exists(parent):
                 self.writeln("cp: cannot create regular file " + \
@@ -230,11 +222,11 @@ class command_cp(HoneyPotCommand):
                 self.writeln(
                     "cp: cannot stat `%s': No such file or directory" % (src,))
                 continue
-            if not recursive and self.fs.is_dir(resolv(src)):
+            if not recursive and self.fs.isdir(resolv(src)):
                 self.writeln("cp: omitting directory `%s'" % (src,))
                 continue
             s = copy.deepcopy(self.fs.getfile(resolv(src)))
-            if is_dir:
+            if isdir:
                 dir = self.fs.get_path(resolv(dest))
                 outfile = os.path.basename(src)
             else:
@@ -268,7 +260,7 @@ class command_mv(HoneyPotCommand):
             self.writeln("Try `mv --help' for more information.")
             return
         sources, dest = args[:-1], args[-1]
-        if len(sources) > 1 and not self.fs.is_dir(resolv(dest)):
+        if len(sources) > 1 and not self.fs.isdir(resolv(dest)):
             self.writeln("mv: target `%s' is not a directory" % (dest,))
             return
 
@@ -279,10 +271,10 @@ class command_mv(HoneyPotCommand):
                 (dest,))
             return
 
-        if self.fs.is_dir(resolv(dest)):
-            is_dir = True
+        if self.fs.isdir(resolv(dest)):
+            isdir = True
         else:
-            is_dir = False
+            isdir = False
             parent = os.path.dirname(resolv(dest))
             if not self.fs.exists(parent):
                 self.writeln("mv: cannot create regular file " + \
@@ -297,7 +289,7 @@ class command_mv(HoneyPotCommand):
                     (src,))
                 continue
             s = self.fs.getfile(resolv(src))
-            if is_dir:
+            if isdir:
                 dir = self.fs.get_path(resolv(dest))
                 outfile = os.path.basename(src)
             else:
@@ -320,12 +312,13 @@ class command_mkdir(HoneyPotCommand):
                 self.writeln(
                     'mkdir: cannot create directory `%s\': File exists' % f)
                 return
-            ok = self.fs.mkdir(path, 0, 0, 4096, 16877)
-            if not ok:
+            try:
+                self.fs.mkdir(path, 0, 0, 4096, 16877)
+            except (FileNotFound) as err:
                 self.writeln(
                     'mkdir: cannot create directory `%s\': ' % f + \
                     'No such file or directory')
-                return
+            return
 commands['/bin/mkdir'] = command_mkdir
 
 class command_rmdir(HoneyPotCommand):
