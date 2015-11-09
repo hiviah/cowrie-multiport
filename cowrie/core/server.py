@@ -26,42 +26,26 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
-import getopt
+import pickle
 
-from cowrie.core.honeypot import HoneyPotCommand
+import twisted.python.log as log
 
-commands = {}
+from . import fs
+from . import honeypot
 
-class command_scp(HoneyPotCommand):
+class CowrieServer:
+    """
+    In traditional Kippo each connection gets its own simulated machine.
+    This is not always ideal, sometimes two connections come from the same
+    source IP address. we want to give them the same environment as well.
+    So files uploaded through SFTP are visible in the SSH session.
+    This class represents a 'virtual server' that can be shared between
+    multiple Cowrie connections
+    """
+    def __init__(self, cfg):
+	self.cfg = cfg
+	self.avatars = []
+        self.hostname = self.cfg.get('honeypot', 'hostname')
+        pckl = pickle.load(file(cfg.get('honeypot', 'filesystem_file'), 'rb'))
+        self.fs = fs.HoneyPotFilesystem(pckl,self.cfg)
 
-    def help(self):
-        self.writeln( """usage: scp [-12346BCpqrv] [-c cipher] [-F ssh_config] [-i identity_file]
-[-l limit] [-o ssh_option] [-P port] [-S program]
-[[user@]host1:]file1 ... [[user@]host2:]file2""")
-
-    def start(self):
-        try:
-            optlist, args = getopt.getopt(self.args, 'tdv:')
-        except getopt.GetoptError as err:
-            self.help()
-            self.exit()
-            return
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-
-    def lineReceived(self, line):
-        log.msg( eventid='KIPP0008', realm='scp', input=line,
-            format='INPUT (%(realm)s): %(input)s' )
-        self.protocol.terminal.write( '\x00' )
-
-commands['/usr/bin/scp'] = command_scp
-
-# vim: set sw=4 et:

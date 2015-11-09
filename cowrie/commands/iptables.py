@@ -37,7 +37,7 @@ class command_iptables(HoneyPotCommand):
     DEFAULT_TABLE = "filter"
 
     def user_is_root(self):
-        return self.honeypot.user.username == 'root'
+        return self.protocol.user.username == 'root'
 
     def start(self):
         """
@@ -155,8 +155,8 @@ class command_iptables(HoneyPotCommand):
         """
 
         # Create fresh tables on start
-        if not hasattr(self.honeypot.env, 'iptables'):
-            setattr(self.honeypot.env, 'iptables', {
+        if not hasattr(self.protocol.user.server, 'iptables'):
+            setattr(self.protocol.user.server, 'iptables', {
                 "raw": {
                     "PREROUTING": [],
                     "OUTPUT": []
@@ -183,7 +183,7 @@ class command_iptables(HoneyPotCommand):
             })
 
         # Get the tables
-        self.tables = getattr(self.honeypot.env, 'iptables')
+        self.tables = getattr(self.protocol.user.server, 'iptables')
 
         # Verify selected table
         if not self.is_valid_table(table):

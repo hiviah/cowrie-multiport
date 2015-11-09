@@ -12,6 +12,7 @@ from twisted.cred import portal
 from cowrie.core.config import readConfigFile
 from cowrie import core
 import cowrie.core.ssh
+import cowrie.core.realm
 import cowrie.core.checkers
 
 class Options(usage.Options):
@@ -57,7 +58,7 @@ class CowrieServiceMaker(object):
             listen_ports_enum = range(listen_ports_range[0], listen_ports_range[1]+1)
 
         factory = core.ssh.HoneyPotSSHFactory(cfg)
-        factory.portal = portal.Portal(core.ssh.HoneyPotRealm(cfg))
+        factory.portal = portal.Portal(core.realm.HoneyPotRealm(cfg))
         # Disable pubkey checking, it breaks mitmproxy on Turris
         # factory.portal.registerChecker(cowrie.core.checkers.HoneypotPublicKeyChecker(cfg))
         factory.portal.registerChecker(cowrie.core.checkers.HoneypotPasswordChecker(cfg))

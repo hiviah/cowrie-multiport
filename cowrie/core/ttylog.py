@@ -14,28 +14,25 @@ def ttylog_write(logfile, len, direction, stamp, data=None):
     if ttylog_disabled:
         return
 
-    f = file(logfile, 'ab')
-    sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
-    f.write(struct.pack('<iLiiLL', 3, 0, len, direction, sec, usec))
-    f.write(data)
-    f.close()
+    with open(logfile, 'ab') as f:
+        sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
+        f.write(struct.pack('<iLiiLL', 3, 0, len, direction, sec, usec))
+        f.write(data)
 
 def ttylog_open(logfile, stamp):
     if ttylog_disabled:
         return
 
-    f = file(logfile, 'ab')
-    sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
-    f.write(struct.pack('<iLiiLL', 1, 0, 0, 0, sec, usec))
-    f.close()
+    with open(logfile, 'ab') as f:
+        sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
+        f.write(struct.pack('<iLiiLL', 1, 0, 0, 0, sec, usec))
 
 def ttylog_close(logfile, stamp):
     if ttylog_disabled:
         return
 
-    f = file(logfile, 'ab')
-    sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
-    f.write(struct.pack('<iLiiLL', 2, 0, 0, 0, sec, usec))
-    f.close()
+    with open(logfile, 'ab') as f:
+        sec, usec = int(stamp), int(1000000 * (stamp - int(stamp)))
+        f.write(struct.pack('<iLiiLL', 2, 0, 0, 0, sec, usec))
 
 # vim: set sw=4 et:

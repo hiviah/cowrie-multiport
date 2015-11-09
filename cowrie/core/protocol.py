@@ -9,24 +9,33 @@ import copy
 from twisted.conch import recvline
 from twisted.conch.insults import insults
 from twisted.python import log
+from twisted.protocols.policies import TimeoutMixin
 
 from . import honeypot
 from . import ttylog
 from . import utils
 
-class HoneyPotBaseProtocol(insults.TerminalProtocol):
-    def __init__(self, avatar, env):
+class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
+
+    def __init__(self, avatar):
         self.user = avatar
-        self.env = env
-        self.cfg = self.env.cfg
-        self.hostname = avatar.hostname
-        self.fs = avatar.fs
+        self.cfg = self.user.cfg
+        self.hostname = avatar.server.hostname
+        self.fs = avatar.server.fs
         if self.fs.exists(avatar.home):
             self.cwd = avatar.home
         else:
             self.cwd = '/'
+
         # commands is also a copy so we can add stuff on the fly
-        self.commands = copy.copy(self.env.commands)
+        # self.commands = copy.copy(self.commands)
+        self.commands = {}
+        import cowrie.commands
+        for c in cowrie.commands.__all__:
+            module = __import__('cowrie.commands.%s' % (c,),
+                globals(), locals(), ['commands'])
+            self.commands.update(module.commands)
+
         self.password_input = False
         self.cmdstack = []
 
@@ -42,6 +51,7 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
         self.realClientPort = transport.transport.getPeer().port
         self.clientVersion = transport.otherVersionString
         self.logintime = time.time()
+        self.setTimeout(1800)
 
         # source IP of client in user visible reports (can be fake or real)
         if self.cfg.has_option('honeypot', 'fake_addr'):
@@ -52,31 +62,39 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
         if self.cfg.has_option('honeypot', 'internet_facing_ip'):
             self.kippoIP = self.cfg.get('honeypot', 'internet_facing_ip')
         else:
-            # Hack to get ip
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.connect(("8.8.8.8", 80))
                 self.kippoIP = s.getsockname()[0]
-                s.close()
             except:
                 self.kippoIP = '192.168.0.1'
+            finally:
+                s.close()
+
+    def timeoutConnection(self):
+        self.writeln( 'timed out waiting for input: auto-logout' )
+        self.terminal.transport.session.sendEOF()
+        self.terminal.transport.session.sendClose()
 
     # this is only called on explicit logout, not on disconnect
-    # this indicates the closing of the channel/session, not the closing of the connection
+    # this indicates the closing of the channel/session, not the closing of the transport
     def connectionLost(self, reason):
-        pass
-        # not sure why i need to do this:
-        # scratch that, these don't seem to be necessary anymore:
-        #del self.fs
-        #del self.commands
+        self.setTimeout(None)
+        insults.TerminalProtocol.connectionLost(self, reason)
+        self.terminal = None # (this should be done by super above)
+        del self.cmdstack
+        del self.commands
+        self.fs = None
+        self.cfg = None
+        self.user = None
+        log.msg( "honeypot terminal protocol connection lost %s" % reason)
 
     def txtcmd(self, txt):
         class command_txtcmd(honeypot.HoneyPotCommand):
             def call(self):
                 log.msg('Reading txtcmd from "%s"' % txt)
-                f = file(txt, 'r')
-                self.write(f.read())
-                f.close()
+                with open(txt, 'r') as f:
+                    self.write(f.read())
         return command_txtcmd
 
     def getCommand(self, cmd, paths):
@@ -96,7 +114,7 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
                     path = i
                     break
         txt = os.path.normpath('%s/%s' % \
-            (self.env.cfg.get('honeypot', 'txtcmds_path'), path))
+            (self.cfg.get('honeypot', 'txtcmds_path'), path))
         if os.path.exists(txt) and os.path.isfile(txt):
             return self.txtcmd(txt)
         if path in self.commands:
@@ -104,6 +122,7 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
         return None
 
     def lineReceived(self, line):
+        self.resetTimeout()
         if len(self.cmdstack):
             self.cmdstack[-1].lineReceived(line)
 
@@ -116,14 +135,6 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
         self.cmdstack.append(obj)
         obj.start()
 
-    def addInteractor(self, interactor):
-        transport = self.terminal.transport.session.conn.transport
-        transport.interactors.append(interactor)
-
-    def delInteractor(self, interactor):
-        transport = self.terminal.transport.session.conn.transport
-        transport.interactors.remove(interactor)
-
     def uptime(self, reset=None):
         transport = self.terminal.transport.session.conn.transport
         r = time.time() - transport.factory.starttime
@@ -133,22 +144,24 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol):
 
 class HoneyPotExecProtocol(HoneyPotBaseProtocol):
 
-    def __init__(self, avatar, env, execcmd):
+    def __init__(self, avatar, execcmd):
         self.execcmd = execcmd
-        HoneyPotBaseProtocol.__init__(self, avatar, env)
+        HoneyPotBaseProtocol.__init__(self, avatar)
 
     def connectionMade(self):
         HoneyPotBaseProtocol.connectionMade(self)
+        self.setTimeout(60)
         self.terminal.stdinlog_open = True
 
         self.cmdstack = [honeypot.HoneyPotShell(self, interactive=False)]
         self.cmdstack[0].lineReceived(self.execcmd)
 
+
 class HoneyPotInteractiveProtocol(HoneyPotBaseProtocol, recvline.HistoricRecvLine):
 
-    def __init__(self, avatar, env):
+    def __init__(self, avatar):
         recvline.HistoricRecvLine.__init__(self)
-        HoneyPotBaseProtocol.__init__(self, avatar, env)
+        HoneyPotBaseProtocol.__init__(self, avatar)
 
     def connectionMade(self):
         self.displayMOTD()
@@ -174,6 +187,14 @@ class HoneyPotInteractiveProtocol(HoneyPotBaseProtocol, recvline.HistoricRecvLin
             '\x15':     self.handle_CTRL_U,	# CTRL-U
             })
 
+    def addInteractor(self, interactor):
+        transport = self.terminal.transport.session.conn.transport
+        transport.interactors.append(interactor)
+
+    def delInteractor(self, interactor):
+        transport = self.terminal.transport.session.conn.transport
+        transport.interactors.remove(interactor)
+
     def displayMOTD(self):
         try:
             self.writeln(self.fs.file_contents('/etc/motd'))
@@ -186,10 +207,9 @@ class HoneyPotInteractiveProtocol(HoneyPotBaseProtocol, recvline.HistoricRecvLin
         endtime = time.strftime('%H:%M',
             time.localtime(time.time()))
         duration = utils.durationHuman(time.time() - self.logintime)
-        f = file('%s/lastlog.txt' % self.env.cfg.get('honeypot', 'data_path'), 'a')
-        f.write('root\tpts/0\t%s\t%s - %s (%s)\n' % \
-            (self.clientIP, starttime, endtime, duration))
-        f.close()
+        with open( '%s/lastlog.txt' % self.cfg.get('honeypot', 'data_path'), 'a') as f:
+            f.write('root\tpts/0\t%s\t%s - %s (%s)\n' % \
+                (self.clientIP, starttime, endtime, duration))
 
     # this doesn't seem to be called upon disconnect, so please use
     # HoneyPotTransport.connectionLost instead
@@ -250,7 +270,7 @@ class LoggingServerProtocol(insults.ServerProtocol):
 
     def __init__(self, prot=None, *a, **kw):
         insults.ServerProtocol.__init__(self, prot, *a, **kw)
-        self.cfg = a[1].cfg
+        self.cfg = a[0].cfg
 
     def connectionMade(self):
         transport = self.transport.session.conn.transport
@@ -303,7 +323,8 @@ class LoggingServerProtocol(insults.ServerProtocol):
     # FIXME: this method is called 4 times on logout....
     # it's called once from Avatar.closed() if disconnected
     def connectionLost(self, reason):
-        # log.msg("received call to LSP.connectionLost")
+        self.cfg = None
+        log.msg("received call to LSP.connectionLost")
         transport = self.transport.session.conn.transport
         if self.ttylog_open:
             log.msg(eventid='KIPP0012', format='Closing TTY Log: %(ttylog)s',

@@ -26,42 +26,43 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
-import getopt
+from zope.interface import implements
 
-from cowrie.core.honeypot import HoneyPotCommand
+import twisted
+from twisted.conch import interfaces as conchinterfaces
+from twisted.python import log 
 
-commands = {}
+from . import protocol
+from . import server
+from . import ssh
 
-class command_scp(HoneyPotCommand):
+import sys
+import gc
 
-    def help(self):
-        self.writeln( """usage: scp [-12346BCpqrv] [-c cipher] [-F ssh_config] [-i identity_file]
-[-l limit] [-o ssh_option] [-P port] [-S program]
-[[user@]host1:]file1 ... [[user@]host2:]file2""")
+class HoneyPotRealm:
+    implements(twisted.cred.portal.IRealm)
+    
+    def __init__(self, cfg):
+        self.cfg = cfg
+	# self.servers = {}
 
-    def start(self):
-        try:
-            optlist, args = getopt.getopt(self.args, 'tdv:')
-        except getopt.GetoptError as err:
-            self.help()
-            self.exit()
-            return
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
-        self.protocol.terminal.write( '\x00' )
+    def requestAvatar(self, avatarId, mind, *interfaces):
 
-    def lineReceived(self, line):
-        log.msg( eventid='KIPP0008', realm='scp', input=line,
-            format='INPUT (%(realm)s): %(input)s' )
-        self.protocol.terminal.write( '\x00' )
+        # if mind in self.servers:
+	#    log.msg( "Using existing server for mind %s" % mind )
+        #    for i in self.servers[mind].avatars:
+	#	log.msg( "attached avatar: %s" % repr(i) )
+	#else:
+	#    log.msg( "Starting new server for mind %s" % mind )
+	#    self.servers[mind] = server.CowrieServer(self.cfg)
 
-commands['/usr/bin/scp'] = command_scp
+	# for i in list(self.servers.keys()):
+        #    log.msg( "REFCOUNT: key: %s, refcount %d" % ( i, sys.getrefcount(self.servers[i])))
+	#    log.msg( "Refer: %s" % repr( gc.get_referrers(self.servers[i])))
 
-# vim: set sw=4 et:
+        if conchinterfaces.IConchUser in interfaces:
+            return interfaces[0], \
+                ssh.HoneyPotAvatar(avatarId, server.CowrieServer(self.cfg)), lambda:None
+        else:
+            raise Exception("No supported interfaces found.")
+

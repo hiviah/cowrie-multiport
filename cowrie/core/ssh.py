@@ -2,11 +2,9 @@
 # See the COPYRIGHT file for more information
 
 import os
-import copy
 import time
 import struct
 import uuid
-import ConfigParser
 
 from zope.interface import implements
 
@@ -21,11 +19,11 @@ from twisted.conch.ssh.common import NS, getNS
 from twisted.internet import defer
 
 from . import credentials
-from . import fs
 from . import auth
 from . import connection
 from . import honeypot
 from . import protocol
+from . import server
 
 class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
 
@@ -41,9 +39,8 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         if self.bannerSent:
             return
         self.bannerSent = True
-        cfg = self.portal.realm.cfg
         try:
-            honeyfs = cfg.get('honeypot', 'contents_path')
+            honeyfs = self.portal.realm.cfg.get('honeypot', 'contents_path')
             issuefile = honeyfs + "/etc/issue.net"
             data = file(issuefile).read()
         except IOError:
@@ -59,14 +56,15 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
 
     def auth_none(self, packet):
         c = credentials.Username(self.user)
-        return self.portal.login(c, None, conchinterfaces.IConchUser)
+        src_ip = self.transport.transport.getPeer().host
+        return self.portal.login(c, src_ip, conchinterfaces.IConchUser)
 
     # Overridden to pass src_ip to credentials.UsernamePasswordIP
     def auth_password(self, packet):
         password = getNS(packet[1:])[0]
         src_ip = self.transport.transport.getPeer().host
         c = credentials.UsernamePasswordIP(self.user, password, src_ip)
-        return self.portal.login(c, None,
+        return self.portal.login(c, src_ip,
             conchinterfaces.IConchUser).addErrback(self._ebPassword)
 
     def auth_keyboard_interactive(self, packet):
@@ -84,7 +82,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
             return defer.fail(error.IgnoreAuthentication())
         src_ip = self.transport.transport.getPeer().host
         c = credentials.PluggableAuthenticationModulesIP(self.user, self._pamConv, src_ip)
-        return self.portal.login(c, None,
+        return self.portal.login(c, src_ip,
             conchinterfaces.IConchUser).addErrback(self._ebPassword)
 
     def _pamConv(self, items):
@@ -92,7 +90,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
          Convert a list of PAM authentication questions into a
          MSG_USERAUTH_INFO_REQUEST.  Returns a Deferred that will be called
          back when the user has responses to the questions.
-    
+
          @param items: a list of 2-tuples (message, kind).  We only care about
              kinds 1 (password) and 2 (text).
          @type items: C{list}
@@ -130,7 +128,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
             string response n
         """
         d, self._pamDeferred = self._pamDeferred, None
-    
+
         try:
             resp = []
             numResps = struct.unpack('>L', packet[:4])[0]
@@ -164,7 +162,7 @@ class HoneyPotSSHFactory(factory.SSHFactory):
 
     def startFactory(self):
 
-        # protocol^Wwhatever instances are kept here for the interact feature
+        # interactive protocols are kept here for the interact feature
         self.sessions = {}
 
         # for use by the uptime command
@@ -252,20 +250,6 @@ class HoneyPotSSHFactory(factory.SSHFactory):
 
         t.factory = self
         return t
-
-class HoneyPotRealm:
-    implements(twisted.cred.portal.IRealm)
-    
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.env = honeypot.HoneyPotEnvironment(cfg)
-
-    def requestAvatar(self, avatarId, mind, *interfaces):
-        if conchinterfaces.IConchUser in interfaces:
-            return interfaces[0], \
-                HoneyPotAvatar(avatarId, self.env), lambda: None
-        else:
-            raise Exception("No supported interfaces found.")
 
 class HoneyPotTransport(transport.SSHServerTransport):
     """
@@ -358,6 +342,8 @@ class HoneyPotTransport(transport.SSHServerTransport):
         if self.transport.sessionno in self.factory.sessions:
             del self.factory.sessions[self.transport.sessionno]
         transport.SSHServerTransport.connectionLost(self, reason)
+	self.transport.connectionLost(reason)
+	self.transport = None
         log.msg(eventid='KIPP0011', format='Connection lost')
 
     def sendDisconnect(self, reason, desc):
@@ -428,23 +414,22 @@ class HoneyPotAvatar(avatar.ConchUser):
     # FIXME: recent twisted conch avatar.py uses IConchuser here
     implements(conchinterfaces.ISession)
 
-    def __init__(self, username, env):
+    def __init__(self, username, server):
         avatar.ConchUser.__init__(self)
         self.username = username
-        self.env = env
-        self.fs = fs.HoneyPotFilesystem(copy.deepcopy(self.env.fs),self.env.cfg)
-        self.hostname = self.env.hostname
+	self.server = server
+	self.cfg = self.server.cfg
         self.protocol = None
 
         self.channelLookup.update({'session': HoneyPotSSHSession})
         self.channelLookup['direct-tcpip'] = CowrieOpenConnectForwardingClient
 
         # sftp support enabled only when option is explicitly set
-        if self.env.cfg.has_option('honeypot', 'sftp_enabled'):
-            if (self.env.cfg.get('honeypot', 'sftp_enabled') == "true"):
+        if self.cfg.has_option('honeypot', 'sftp_enabled'):
+            if (self.cfg.get('honeypot', 'sftp_enabled') == "true"):
                 self.subsystemLookup['sftp'] = filetransfer.FileTransferServer
 
-        self.uid = self.gid = auth.UserDB(self.env.cfg).getUID(self.username)
+        self.uid = self.gid = auth.UserDB(self.cfg).getUID(self.username)
         if not self.uid:
             self.home = '/root'
         else:
@@ -452,7 +437,7 @@ class HoneyPotAvatar(avatar.ConchUser):
 
     def openShell(self, proto):
         serverProtocol = protocol.LoggingServerProtocol(
-            protocol.HoneyPotInteractiveProtocol, self, self.env)
+            protocol.HoneyPotInteractiveProtocol, self)
         self.protocol = serverProtocol
         serverProtocol.makeConnection(proto)
         proto.makeConnection(session.wrapProtocol(serverProtocol))
@@ -469,7 +454,7 @@ class HoneyPotAvatar(avatar.ConchUser):
 
     def execCommand(self, proto, cmd):
         serverProtocol = protocol.LoggingServerProtocol(
-            protocol.HoneyPotExecProtocol, self, self.env, cmd)
+            protocol.HoneyPotExecProtocol, self, cmd)
         self.protocol = serverProtocol
         serverProtocol.makeConnection(proto)
         proto.makeConnection(session.wrapProtocol(serverProtocol))
@@ -480,6 +465,7 @@ class HoneyPotAvatar(avatar.ConchUser):
     def closed(self):
         if self.protocol:
             self.protocol.connectionLost("disconnected")
+            self.protocol = None
 
     def eofReceived(self):
         pass
@@ -498,14 +484,14 @@ def getRSAKeys(cfg):
         rsaKey = RSA.generate(KEY_LENGTH, randbytes.secureRandom)
         publicKeyString = keys.Key(rsaKey).public().toString('openssh')
         privateKeyString = keys.Key(rsaKey).toString('openssh')
-        with file(public_key, 'w+b') as f:
+        with open(public_key, 'w+b') as f:
             f.write(publicKeyString)
-        with file(private_key, 'w+b') as f:
+        with open(private_key, 'w+b') as f:
             f.write(privateKeyString)
     else:
-        with file(public_key) as f:
+        with open(public_key, 'r') as f:
             publicKeyString = f.read()
-        with file(private_key) as f:
+        with open(private_key, 'r') as f:
             privateKeyString = f.read()
     return publicKeyString, privateKeyString
 
@@ -520,14 +506,14 @@ def getDSAKeys(cfg):
         dsaKey = DSA.generate(KEY_LENGTH, randbytes.secureRandom)
         publicKeyString = keys.Key(dsaKey).public().toString('openssh')
         privateKeyString = keys.Key(dsaKey).toString('openssh')
-        with file(public_key, 'w+b') as f:
+        with open(public_key, 'w+b') as f:
             f.write(publicKeyString)
-        with file(private_key, 'w+b') as f:
+        with open(private_key, 'w+b') as f:
             f.write(privateKeyString)
     else:
-        with file(public_key) as f:
+        with open(public_key, 'r') as f:
             publicKeyString = f.read()
-        with file(private_key) as f:
+        with open(private_key, 'r') as f:
             privateKeyString = f.read()
     return publicKeyString, privateKeyString
 
@@ -554,7 +540,7 @@ class CowrieSFTPFile:
             openFlags |= os.O_TRUNC
         if flags & FXF_EXCL == FXF_EXCL:
             openFlags |= os.O_EXCL
-        if attrs.has_key("permissions"):
+        if "permissions" in attrs:
             mode = attrs["permissions"]
             del attrs["permissions"]
         else:
@@ -617,18 +603,18 @@ class CowrieSFTPServer:
 
     def __init__(self, avatar):
         self.avatar = avatar
-        self.fs = self.avatar.fs
+        self.fs = self.avatar.server.fs
 
     def _absPath(self, path):
         home = self.avatar.home
         return os.path.abspath(os.path.join(home, path))
 
     def _setAttrs(self, path, attrs):
-        if attrs.has_key("uid") and attrs.has_key("gid"):
+        if "uid" in attrs and "gid" in attrs:
             self.fs.chown(path, attrs["uid"], attrs["gid"])
-        if attrs.has_key("permissions"):
+        if "permissions" in attrs:
             self.fs.chmod(path, attrs["permissions"])
-        if attrs.has_key("atime") and attrs.has_key("mtime"):
+        if "atime" in attrs and "mtime" in attrs:
             self.fs.utime(path, attrs["atime"], attrs["mtime"])
 
     def _getAttrs(self, s):
