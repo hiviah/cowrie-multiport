@@ -76,5 +76,6 @@ try:
     logging.info("Start script called")
 except:
     logging.exception("Start script ended with nonzero status")
+    sys.exit(4)
 
 
