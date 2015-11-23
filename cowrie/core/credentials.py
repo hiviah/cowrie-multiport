@@ -26,6 +26,10 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
+"""
+This module contains ...
+"""
+
 from zope.interface import implements
 
 from twisted.cred.credentials import IUsernamePassword, \
@@ -72,7 +76,7 @@ class PluggableAuthenticationModulesIP:
 class Username:
     implements(IUsername)
     """
-    
+
     """
     def __init__(self, username):
         self.username = username
@@ -81,7 +85,7 @@ class Username:
 class UsernamePasswordIP:
     implements(IUsernamePasswordIP)
     """
-    
+
     """
     def __init__(self, username, password, ip):
         self.username = username

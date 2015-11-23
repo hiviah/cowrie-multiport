@@ -1,6 +1,10 @@
 # Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
 # See the COPYRIGHT file for more information
 
+"""
+This module contains ...
+"""
+
 import os
 import shlex
 import re
@@ -8,9 +12,11 @@ import copy
 
 from twisted.python import log
 
-from . import fs
+from cowrie.core import fs
 
 class HoneyPotCommand(object):
+    """
+    """
 
     def __init__(self, protocol, *args):
         self.protocol = protocol
@@ -21,35 +27,66 @@ class HoneyPotCommand(object):
         self.nextLine = self.protocol.terminal.nextLine
         self.fs = self.protocol.fs
 
+
     def start(self):
+        """
+        """
         self.call()
         self.exit()
 
+
     def call(self):
+        """
+        """
         self.writeln('Hello World! [%s]' % (repr(self.args),))
 
+
     def exit(self):
+        """
+        """
         self.protocol.cmdstack.pop()
         self.protocol.cmdstack[-1].resume()
 
+
     def handle_CTRL_C(self):
+        """
+        """
         log.msg('Received CTRL-C, exiting..')
         self.writeln('^C')
         self.exit()
 
+
     def lineReceived(self, line):
-        log.msg('INPUT: %s' % (line,))
+        """
+        """
+        log.msg('QUEUED INPUT: %s' % (line,))
+        # FIXME: naive command parsing, see lineReceived below
+        self.protocol.cmdstack[0].cmdpending.append(line)
+
 
     def resume(self):
+        """
+        """
         pass
+
 
     def handle_TAB(self):
+        """
+        """
         pass
+
 
     def handle_CTRL_D(self):
+        """
+        """
         pass
 
+
+
 class HoneyPotShell(object):
+    """
+    """
+
     def __init__(self, protocol, interactive=True):
         self.protocol = protocol
         self.interactive = interactive
@@ -59,7 +96,10 @@ class HoneyPotShell(object):
             'PATH':     '/bin:/usr/bin:/sbin:/usr/sbin',
             }
 
+
     def lineReceived(self, line):
+        """
+        """
         log.msg('CMD: %s' % (line,))
         line = line[:500]
         comment = re.compile('^\s*#')
@@ -74,7 +114,10 @@ class HoneyPotShell(object):
         else:
             self.showPrompt()
 
+
     def runCommand(self):
+        """
+        """
         def runOrPrompt():
             if len(self.cmdpending):
                 self.runCommand()
@@ -97,12 +140,12 @@ class HoneyPotShell(object):
         except:
             self.protocol.writeln(
                 'bash: syntax error: unexpected end of file')
-            # could run runCommand here, but i'll just clear the list instead
+            # Could run runCommand here, but i'll just clear the list instead
             self.cmdpending = []
             self.showPrompt()
             return
 
-        # probably no reason to be this comprehensive for just PATH...
+        # Probably no reason to be this comprehensive for just PATH...
         envvars = copy.copy(self.envvars)
         cmd = None
         while len(cmdAndArgs):
@@ -129,22 +172,26 @@ class HoneyPotShell(object):
         cmdclass = self.protocol.getCommand(cmd, envvars['PATH'].split(':'))
         if cmdclass:
             log.msg(eventid='KIPP0005', input=line, format='Command found: %(input)s')
-            #self.protocol.logDispatch('Command found: %s' % (line,))
             self.protocol.call_command(cmdclass, *rargs)
         else:
             log.msg(eventid='KIPP0006',
                 input=line, format='Command not found: %(input)s')
-            #self.protocol.logDispatch('Command not found: %s' % (line,))
             if len(line):
                 self.protocol.writeln('bash: %s: command not found' % (cmd,))
                 runOrPrompt()
 
+
     def resume(self):
+        """
+        """
         if self.interactive:
             self.protocol.setInsertMode()
         self.runCommand()
 
+
     def showPrompt(self):
+        """
+        """
         if not self.interactive:
             return
         # Example: srv03:~#
@@ -159,11 +206,11 @@ class HoneyPotShell(object):
             prompt += '$ '    # "Non-Root" user
 
         path = self.protocol.cwd
-        homelen = len(self.protocol.user.home)
-        if path == self.protocol.user.home:
+        homelen = len(self.protocol.user.avatar.home)
+        if path == self.protocol.user.avatar.home:
             path = '~'
         elif len(path) > (homelen+1) and \
-                path[:(homelen+1)] == self.protocol.user.home + '/':
+                path[:(homelen+1)] == self.protocol.user.avatar.home + '/':
             path = '~' + path[homelen:]
         # Uncomment the three lines below for a 'better' CentOS look.
         # Rather than '[root@svr03 /var/log]#' is shows '[root@svr03 log]#'.
@@ -174,18 +221,26 @@ class HoneyPotShell(object):
         attrs = {'path': path}
         self.protocol.terminal.write(prompt % attrs)
 
+
     def handle_CTRL_C(self):
+        """
+        """
         self.protocol.lineBuffer = []
         self.protocol.lineBufferIndex = 0
         self.protocol.terminal.nextLine()
         self.showPrompt()
 
+
     def handle_CTRL_D(self):
+        """
+        """
         log.msg('Received CTRL-D, exiting..')
         self.protocol.call_command(self.protocol.commands['exit'])
 
-    # Tab completion
+
     def handle_TAB(self):
+        """
+        """
         if not len(self.protocol.lineBuffer):
             return
         l = ''.join(self.protocol.lineBuffer)

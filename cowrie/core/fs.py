@@ -1,6 +1,10 @@
 # Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
 # See the COPYRIGHT file for more information
 
+"""
+This module contains ...
+"""
+
 import os
 import time
 import fnmatch
@@ -36,6 +40,7 @@ class FileNotFound(Exception):
     pass
 
 class HoneyPotFilesystem(object):
+
     def __init__(self, fs, cfg):
         self.fs = fs
         self.cfg = cfg
@@ -115,7 +120,7 @@ class HoneyPotFilesystem(object):
     def exists(self, path):
         '''
         Return True if path refers to an existing path.
-        Returns False for broken symbolic links. 
+        Returns False for broken symbolic links.
         '''
         f = self.getfile(path, follow_symlinks=True)
         if f is not False:
@@ -308,7 +313,7 @@ class HoneyPotFilesystem(object):
         return os.write(fd, string)
 
     def close(self, fd):
-        if (fd == None):
+        if not fd:
             return True
         if self.tempfiles[fd] is not None:
             shasum = hashlib.sha256(open(self.tempfiles[fd], 'rb').read()).hexdigest()
@@ -325,7 +330,7 @@ class HoneyPotFilesystem(object):
         return os.close(fd)
 
     def lseek(self, fd, offset, whence):
-        if (fd == None):
+        if not fd:
             return True
         return os.lseek(fd, offset, whence)
 

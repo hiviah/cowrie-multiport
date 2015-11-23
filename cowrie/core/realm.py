@@ -26,22 +26,26 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
+"""
+This module contains ...
+"""
+
 from zope.interface import implements
 
 import twisted
 from twisted.conch import interfaces as conchinterfaces
-from twisted.python import log 
+from twisted.python import log
 
-from . import protocol
-from . import server
-from . import ssh
+from cowrie.core import protocol
+from cowrie.core import server
+from cowrie.core import ssh
 
 import sys
 import gc
 
 class HoneyPotRealm:
     implements(twisted.cred.portal.IRealm)
-    
+
     def __init__(self, cfg):
         self.cfg = cfg
 	# self.servers = {}
@@ -62,7 +66,7 @@ class HoneyPotRealm:
 
         if conchinterfaces.IConchUser in interfaces:
             return interfaces[0], \
-                ssh.HoneyPotAvatar(avatarId, server.CowrieServer(self.cfg)), lambda:None
+                ssh.CowrieUser(avatarId, server.CowrieServer(self.cfg)), lambda:None
         else:
             raise Exception("No supported interfaces found.")
 
